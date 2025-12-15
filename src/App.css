@@ -72,11 +72,15 @@ body.dark {
   min-height: 100vh;
   display: flex;
   flex-direction: column;
+  background: var(--bg-primary);
 }
 
 header {
   padding: 1rem 2rem;
   border-bottom: 1px solid var(--border-color);
+  background: var(--card-bg);
+  box-shadow: var(--hover-shadow);
+  border-radius: 0 0 8px 8px;
 }
 
 .nav-container {
@@ -103,7 +107,7 @@ nav a {
   color: var(--text-color);
   text-decoration: none;
   padding: 0.5rem 1rem;
-  border-radius: 4px;
+  border-radius: 5px;
   transition: background-color 0.3s;
 }
 
@@ -117,7 +121,7 @@ nav a:hover {
   font-size: 1.5rem;
   cursor: pointer;
   padding: 0.5rem;
-  border-radius: 4px;
+  border-radius: 5px;
   transition: background-color 0.3s;
 }
 
@@ -133,6 +137,11 @@ nav a:hover {
   align-items: center;
   padding: 4rem 2rem;
   text-align: center;
+  background: var(--card-bg);
+  border-radius: 8px;
+  margin: 1rem 2rem;
+  box-shadow: var(--hover-shadow);
+  border: 1px solid var(--border-color);
 }
 
 .hero h1 {
@@ -153,21 +162,26 @@ nav a:hover {
   color: white;
   padding: 1rem 2rem;
   border: none;
-  border-radius: 4px;
+  border-radius: 5px;
   font-size: 1.1rem;
   cursor: pointer;
   text-decoration: none;
   display: inline-block;
-  transition: background-color 0.3s;
+  transition: background-color 0.3s, transform 0.2s;
 }
 
 .cta-button:hover {
   background-color: var(--primary-hover);
+  transform: translateY(-2px);
 }
 
 .features {
   padding: 4rem 2rem;
   background-color: var(--bg-secondary);
+  margin: 1rem 2rem;
+  border-radius: 8px;
+  box-shadow: var(--hover-shadow);
+  border: 1px solid var(--border-color);
 }
 
 .features h2 {
@@ -186,15 +200,16 @@ nav a:hover {
 
 .feature {
   padding: 2rem;
-  background-color: var(--bg-primary);
+  background-color: var(--card-bg);
   border-radius: 8px;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+  box-shadow: var(--hover-shadow);
   transition: transform 0.3s, box-shadow 0.3s;
+  border: 1px solid var(--border-color);
 }
 
 .feature:hover {
   transform: translateY(-5px);
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+  box-shadow: var(--hover-shadow);
 }
 
 .feature h3 {
@@ -212,6 +227,10 @@ footer {
   text-align: center;
   border-top: 1px solid var(--border-color);
   color: var(--text-secondary);
+  background: var(--card-bg);
+  box-shadow: var(--hover-shadow);
+  border-radius: 8px 8px 0 0;
+  margin-top: 1rem;
 }
 
 @media (max-width: 768px) {
