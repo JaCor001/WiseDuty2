@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import './Calendar.css'
 import './App.css'
 
@@ -190,6 +190,10 @@ function Calendar() {
   const [editEvent, setEditEvent] = useState<Event | null>(null)
   const [darkMode, setDarkMode] = useState(() => localStorage.getItem('theme') === 'dark')
   const [animating, setAnimating] = useState(false)
+
+  useEffect(() => {
+    document.body.className = darkMode ? 'dark' : 'light'
+  }, [darkMode])
   const [showSettings, setShowSettings] = useState(false)
   const [timeFormat, setTimeFormat] = useState<'24h' | '12h'>(() => {
     try {
