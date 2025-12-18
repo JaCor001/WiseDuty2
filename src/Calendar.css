@@ -1,25 +1,52 @@
 .calendar {
   width: 100%;
   height: 100vh;
-  padding: env(safe-area-inset-top, 1rem) env(safe-area-inset-right, 1rem) env(safe-area-inset-bottom, 1rem) env(safe-area-inset-left, 1rem);
+  padding: env(safe-area-inset-top, 1rem) 0 env(safe-area-inset-bottom, 1rem) 0;
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
   transition: opacity 0.3s ease;
   background: var(--bg-primary);
   color: var(--text-color);
+  overflow: hidden;
 }
 
 .calendar-page-container {
-  max-width: 90vw;
+  width: 100%;
   margin: 0 auto;
-  padding: 0 2rem;
+  padding: 0;
+  flex: 1;
+  overflow-y: auto;
 }
 
 h1 {
   text-align: center;
   color: var(--text-color);
+  margin: 0;
+}
+
+.month-header {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.nav-prev, .nav-next {
+  background: var(--bg-secondary);
+  color: var(--text-color);
+  border: 1px solid var(--border-color);
+  padding: 0.5rem;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background-color 0.3s;
+  font-size: 1.2rem;
+}
+
+.nav-prev:hover, .nav-next:hover {
+  background: var(--hover-bg);
 }
 
 .calendar.animating {
@@ -27,16 +54,12 @@ h1 {
 }
 
 .calendar-header {
-  text-align: center;
+  width: 100%;
   padding: 1rem;
-  border-radius: 8px;
-  margin-bottom: 1rem;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  background: var(--card-bg);
-  border: 1px solid var(--border-color);
-  box-shadow: var(--hover-shadow);
+  background: var(--bg-primary);
 }
 
 .calendar-header h2 {
@@ -50,19 +73,18 @@ h1 {
 }
 
 .calendar-header button {
-  background: var(--primary-color);
-  color: #ffffff;
-  border: none;
-  padding: 0.75rem 1rem;
-  font-size: 1rem;
-  border-radius: 5px;
+  background: var(--bg-secondary);
+  color: var(--text-color);
+  border: 1px solid var(--border-color);
+  padding: 0.5rem;
+  border-radius: 4px;
   cursor: pointer;
-  transition: background-color 0.3s, transform 0.2s;
+  transition: background-color 0.3s;
+  filter: grayscale(1);
 }
 
 .calendar-header button:hover {
-  background: var(--primary-hover);
-  transform: translateY(-2px);
+  background: var(--hover-bg);
 }
 
 .calendar-container {
@@ -71,17 +93,7 @@ h1 {
   justify-content: center;
 }
 
-.nav-prev, .nav-next {
-  font-size: 2rem;
-  margin: 0 1rem;
-  background: none;
-  border: none;
-  color: var(--text-color);
-  cursor: pointer;
-  transition: color 0.3s, transform 0.2s;
-  padding: 0.5rem;
-  border-radius: 4px;
-}
+
 
 .nav-prev:hover, .nav-next:hover {
   color: var(--accent-color);
@@ -93,8 +105,9 @@ h1 {
   display: grid;
   grid-template-columns: repeat(7, 1fr);
   gap: 0.5rem;
-  width: 100%;
-  max-width: 600px;
+  width: 90%;
+  margin: 0 auto;
+  max-width: 100%;
 }
 
 .day-header {
@@ -105,15 +118,17 @@ h1 {
   border-radius: 4px;
   border: 1px solid var(--border-color);
   color: var(--text-color);
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .day {
-  aspect-ratio: 1/2;
+  height: 10vh;
   display: flex;
   flex-direction: column;
   align-items: flex-start;
   justify-content: flex-start;
-  padding: 0.5rem;
+  padding: 0;
   border-radius: 8px;
   cursor: pointer;
   position: relative;
@@ -121,6 +136,22 @@ h1 {
   background: var(--card-bg);
   border: 1px solid var(--border-color);
   color: var(--text-color);
+  width: 100%;
+  box-sizing: border-box;
+}
+
+/* Adapt to horizontal monitors (wide screens) */
+@media (min-aspect-ratio: 16/9) {
+  .day {
+    aspect-ratio: 1/1.2;
+  }
+}
+
+/* For very wide screens */
+@media (min-aspect-ratio: 21/9) {
+  .day {
+    aspect-ratio: 1/1;
+  }
 }
 
 .day:hover {
@@ -133,6 +164,7 @@ h1 {
   font-weight: bold;
   margin-bottom: 0.25rem;
   color: var(--text-color);
+  padding: 0.5rem 0.5rem 0.25rem 0.5rem;
 }
 
 .day.today .day-number {
@@ -164,10 +196,21 @@ h1 {
   background: var(--bg-secondary);
 }
 
-.day.selected,
-.day.in-range {
+.violation-icon {
+  position: absolute;
+  top: calc(30% + 12px + 2px);
+  font-size: 1rem;
+  cursor: pointer;
+  color: #ff0000;
+}
+
+.day.selected {
   box-shadow: 0 0 20px var(--glow-color);
   animation: breathe 2s infinite;
+  border-color: var(--accent-color);
+}
+
+.day.in-range {
   border-color: var(--accent-color);
 }
 
@@ -185,9 +228,16 @@ h1 {
 .event-bar {
   position: absolute;
   top: 30%;
-  height: 6px;
+  height: 12px;
   border-radius: 2px;
   background: var(--accent-color);
+  box-shadow: 0 0 2px rgba(0, 0, 0, 0.2);
+  cursor: pointer;
+  transition: transform 0.2s ease;
+}
+
+.event-bar:hover {
+  transform: translateY(-2.4px);
 }
 
 .event-bar.duty {
@@ -196,12 +246,13 @@ h1 {
 
 .event-bar.rest {
   background: #ff69b4; /* Pink for rest, accessible */
+  cursor: pointer;
 }
 
 .mr-label {
   position: absolute;
-  top: -0.5rem;
-  left: 0;
+  bottom: 2px;
+  left: 2px;
   font-size: 0.7rem;
   font-weight: bold;
   color: var(--text-secondary);
@@ -213,26 +264,27 @@ h1 {
 
 .marker {
   position: absolute;
-  bottom: 4px;
+  bottom: 2px;
+  left: 2px;
   font-size: 0.7rem;
   font-weight: bold;
   color: var(--text-secondary);
   background: var(--card-bg);
-  padding: 0.1rem 0.2rem;
+  padding: 0rem 0.2rem;
   border-radius: 2px;
   border: 1px solid var(--border-color);
+  height: 1em;
+  display: inline-block;
+  pointer-events: none;
 }
 
 .marker.E {
-  left: 4px;
 }
 
 .marker.N {
-  right: 4px;
 }
 
 .marker.L {
-  right: 16px;
 }
 
 .day-details {
@@ -598,31 +650,22 @@ button:disabled {
 
 .nav-prev,
 .nav-next {
-  position: absolute;
-  top: 50%;
-  transform: translateY(-50%);
   background: var(--card-bg);
-  border: 1px solid var(--border-color);
-  border-radius: 50%;
-  width: 40px;
-  height: 40px;
+  border: none;
+  border-radius: 0;
+  width: 50px;
+  height: 50px;
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  font-size: 1.5rem;
+  font-size: 1.8rem;
   color: var(--text-color);
-  z-index: 10;
+  font-family: 'Times New Roman', serif;
   transition: background-color 0.3s;
 }
 
-.nav-prev {
-  left: -60px;
-}
 
-.nav-next {
-  right: -60px;
-}
 
 .nav-prev:hover,
 .nav-next:hover {
@@ -653,4 +696,38 @@ button:disabled {
   .header-buttons button {
     font-size: 1rem;
   }
+
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.modal {
+  background: var(--card-bg);
+  padding: 1rem;
+  border-radius: 8px;
+  max-width: 400px;
+  border: 1px solid var(--border-color);
+}
+
+.modal button {
+  padding: 0.5rem 1rem;
+  border: 1px solid var(--border-color);
+  background: var(--hover-bg);
+  color: var(--text-color);
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.modal button:hover {
+  background: var(--hover-bg);
+}
 }

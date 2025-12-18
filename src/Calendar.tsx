@@ -9,6 +9,8 @@ interface Event {
   end: Date
   type: 'duty' | 'rest'
   acclTZ?: string
+  violated?: boolean
+  isLocalNightRest?: boolean
 }
 
 // Get all IANA time zones with their current UTC offsets
@@ -190,6 +192,9 @@ function Calendar() {
   const [editEvent, setEditEvent] = useState<Event | null>(null)
   const [darkMode, setDarkMode] = useState(() => localStorage.getItem('theme') === 'dark')
   const [animating, setAnimating] = useState(false)
+  const [showRestDetails, setShowRestDetails] = useState(false)
+  const [selectedRest, setSelectedRest] = useState<Event | null>(null)
+  const [showHamburgerMenu, setShowHamburgerMenu] = useState(false)
 
   useEffect(() => {
     document.body.className = darkMode ? 'dark' : 'light'
@@ -307,7 +312,20 @@ function Calendar() {
     const dayEnd = new Date(dayStart)
     dayEnd.setDate(dayEnd.getDate() + 1)
     const dayEvents = events.filter(event => event.start < dayEnd && event.end > dayStart)
-    return dayEvents.flatMap(event => {
+    const allBars: any[] = []
+    const allMarkers: any[] = []
+    dayEvents.forEach(event => {
+      let barTop = '30%'
+      if (event.type === 'rest') {
+        const overlappingRest = dayEvents.find(e => e.type === 'rest' && e !== event && !(e.end <= event.start || e.start >= event.end))
+        if (overlappingRest) {
+          const thisDuration = event.end.getTime() - event.start.getTime()
+          const otherDuration = overlappingRest.end.getTime() - overlappingRest.start.getTime()
+          if (thisDuration > otherDuration) {
+            barTop = '42%'
+          }
+        }
+      }
       const isStart = event.start >= dayStart && event.start < dayEnd
       const isEnd = event.end > dayStart && event.end <= dayEnd
       let left = 0
@@ -327,35 +345,47 @@ function Calendar() {
       const nightStart = regulator === 'EASA' || regulator === 'Australia' ? 0 : regulator === 'FAA' ? 1 : 2
       const nightEnd = regulator === 'Australia' ? 5 : 6
       const markers = []
-      const acclimatizedStartHour = getHourInTZ(event.start, event.acclTZ || acclTZ)
-      const acclimatizedEndHour = getHourInTZ(event.end, event.acclTZ || acclTZ)
-      if (regulator === 'TC') {
-        if (acclimatizedStartHour >= 2 && acclimatizedStartHour < 7) markers.push('E')
-        if (acclimatizedEndHour >= 0 && acclimatizedEndHour < 2) markers.push('L')
-        if ((acclimatizedStartHour >= 13 || acclimatizedStartHour < 2) && acclimatizedEndHour > 1) markers.push('N')
-      } else {
-        if (acclimatizedStartHour < 6) markers.push('E')
-        if (acclimatizedEndHour > 22) markers.push('L')
-        if (acclimatizedStartHour < nightEnd && acclimatizedEndHour > nightStart) markers.push('N')
+      if (event.type === 'duty') {
+        const acclimatizedStartHour = getHourInTZ(event.start, event.acclTZ || acclTZ)
+        const acclimatizedEndHour = getHourInTZ(event.end, event.acclTZ || acclTZ)
+        if (isStart && ((regulator === 'TC' && acclimatizedStartHour >= 2 && acclimatizedStartHour < 7) ||
+                        (regulator !== 'TC' && acclimatizedStartHour < 6))) {
+          markers.push('E')
+        } else if (isEnd && ((regulator === 'TC' && acclimatizedEndHour >= 0 && acclimatizedEndHour < 2) ||
+                             (regulator !== 'TC' && acclimatizedEndHour > 22))) {
+          markers.push('L')
+        } else if (isEnd && ((regulator === 'TC' && (acclimatizedStartHour >= 13 || acclimatizedStartHour < 2) && acclimatizedEndHour > 1) ||
+                             (regulator !== 'TC' && acclimatizedStartHour < nightEnd && acclimatizedEndHour > nightStart))) {
+          markers.push('N')
+        }
+      } else if (event.type === 'rest' && event.isLocalNightRest) {
+        markers.push('LNR')
       }
       const bar = (
         <div
           key={event.id}
           className={`event-bar ${event.type}`}
-          style={{ left: `${left}%`, width: `${width}%` }}
+          style={{ left: `${left}%`, width: `${width}%`, top: barTop }}
           title={event.title}
+          onClick={event.type === 'duty' ? () => alert(`${event.title}\nType: ${event.type}\nStart: ${event.start.toLocaleString()}\nEnd: ${event.end.toLocaleString()}`) : () => { setSelectedRest(event); setShowRestDetails(true); }}
         />
       )
-      const markerElements = markers.map(marker => (
-        <span
-          key={`${event.id}-${marker}`}
-          className={`marker ${marker}`}
-        >
-          {marker}
-        </span>
-      ))
-      return [bar, ...markerElements]
+      allBars.push(bar)
+      markers.forEach(marker => allMarkers.push({ type: marker, eventId: event.id }))
     })
+    const markerElements = allMarkers.map((marker, index) => {
+      const isLNR = marker.type === 'LNR'
+      return (
+        <span
+          key={`${marker.eventId}-${marker.type}`}
+          className={`marker ${marker.type}`}
+          style={isLNR ? { top: 'calc(30% + 12px + 2px)', left: '50%', transform: 'translateX(-50%)' } : { left: `${2 + index * 15}px`, bottom: '2px' }}
+        >
+          {marker.type}
+        </span>
+      )
+    })
+    return [...allBars, ...markerElements]
   }
 
   const getDayActions = (date: Date) => {
@@ -384,7 +414,22 @@ function Calendar() {
 
   const handleClick = (date: Date) => {
     if (!showMenu) {
-      if (date.getMonth() !== currentDate.getMonth()) {
+      if (showAddDuty) {
+        setAddDutyDate(date)
+        setEndDate(date.toISOString().slice(0, 10))
+        setSelectedDate(date)
+      } else if (isEdit) {
+        const newEvent = events.find(e => e.start.toDateString() === date.toDateString() && e.type === 'duty')
+        if (newEvent) {
+          setSelectedDate(date)
+          setEditEvent(newEvent)
+          // Update the form fields
+          setStartTime(newEvent.start.toTimeString().slice(0, 5))
+          setEndDate(newEvent.end.toISOString().slice(0, 10))
+          setEndTime(newEvent.end.toTimeString().slice(0, 5))
+          setModalAcclTZ(newEvent.acclTZ || acclTZ)
+        }
+      } else if (date.getMonth() !== currentDate.getMonth()) {
         setAnimating(true)
         setTimeout(() => setCurrentDate(new Date(date.getFullYear(), date.getMonth(), 1)), 150)
         setTimeout(() => setAnimating(false), 300)
@@ -431,7 +476,8 @@ function Calendar() {
     if (event) {
       // Remove both the duty event and its associated rest event
       const restEventId = event.id + 'rest'
-      setEvents(events.filter(e => e !== event && e.id !== restEventId))
+      const lnrEvents = events.filter(e => e.isLocalNightRest && (e.start.getTime() === event.end.getTime() || e.end.getTime() === event.start.getTime()))
+      setEvents(events.filter(e => e !== event && e.id !== restEventId && !lnrEvents.includes(e)))
       setSelectedDate(null)
     }
   }
@@ -470,22 +516,157 @@ function Calendar() {
       return
     }
     if (isEdit && editEvent) {
+      const oldStart = editEvent.start
+      const oldEnd = editEvent.end
+      // Remove LNR that starts at old end (after this duty) or ends at old start (before this duty)
+      const lnrToRemove = events.filter(e => e.isLocalNightRest && (e.start.getTime() === oldEnd.getTime() || e.end.getTime() === oldStart.getTime()))
+      setEvents(events.filter(e => !lnrToRemove.includes(e)))
+      
       editEvent.start = start
       editEvent.end = end
       editEvent.acclTZ = modalAcclTZ || acclTZ
-      // Update associated rest event
-      const restEvent = events.find(e => e.id === editEvent.id + 'rest')
-      if (restEvent) {
-        const restStart = new Date(end)
-        const restEnd = new Date(restStart)
-        restEnd.setHours(restEnd.getHours() + actualRestHours)
-        restEvent.start = restStart
-        restEvent.end = restEnd
-        restEvent.title = restType === '10+travel' ? 'Required Rest (10+travel)' : 'Required Rest'
-      }
+      // Note: Rest period is not updated when editing duty
       setEvents([...events])
       
-      // Handle 10+travel notifications for edited duties
+      // Add LNR before if needed
+      const previousDuty = events.filter(e => e.type === 'duty' && e.end <= start && e !== editEvent).sort((a,b) => b.end.getTime() - a.end.getTime())[0]
+      if (previousDuty) {
+        const prevEndDayStart = new Date(previousDuty.end.getFullYear(), previousDuty.end.getMonth(), previousDuty.end.getDate())
+        const prevEndDayEnd = new Date(prevEndDayStart.getTime() + 24 * 60 * 60 * 1000)
+        if (previousDuty.end >= prevEndDayStart && previousDuty.end < prevEndDayEnd) {
+          const acclimatizedStartHour = getHourInTZ(previousDuty.start, previousDuty.acclTZ || acclTZ)
+          const acclimatizedEndHour = getHourInTZ(previousDuty.end, previousDuty.acclTZ || acclTZ)
+          const nightStart = regulator === 'EASA' || regulator === 'Australia' ? 0 : regulator === 'FAA' ? 1 : 2
+          const nightEnd = regulator === 'Australia' ? 5 : 6
+          const hasN = (regulator === 'TC' && (acclimatizedStartHour >= 13 || acclimatizedStartHour < 2) && acclimatizedEndHour > 1) ||
+                       (regulator !== 'TC' && acclimatizedStartHour < nightEnd && acclimatizedEndHour > nightStart)
+          if (hasN) {
+            const newStartDayStart = new Date(start.getFullYear(), start.getMonth(), start.getDate())
+            const newStartDayEnd = new Date(newStartDayStart.getTime() + 24 * 60 * 60 * 1000)
+            if (start >= newStartDayStart && start < newStartDayEnd) {
+              const newAcclimatizedStartHour = getHourInTZ(start, modalAcclTZ || acclTZ)
+              const hasE = (regulator === 'TC' && newAcclimatizedStartHour >= 2 && newAcclimatizedStartHour < 7) ||
+                           (regulator !== 'TC' && newAcclimatizedStartHour < 6)
+              if (hasE) {
+                const lnrStart = previousDuty.end
+                let lnrEnd = new Date(lnrStart.getTime() + 12 * 60 * 60 * 1000)
+                const minEnd = new Date(start.getFullYear(), start.getMonth(), start.getDate(), 7, 30)
+                if (lnrEnd < minEnd) lnrEnd = minEnd
+                const duration = (lnrEnd.getTime() - lnrStart.getTime()) / (1000 * 60 * 60)
+                const nightStartTime = new Date(previousDuty.end.getFullYear(), previousDuty.end.getMonth(), previousDuty.end.getDate(), 22, 30)
+                const nightEndTime = new Date(start.getFullYear(), start.getMonth(), start.getDate(), 9, 30)
+                const overlapStart = Math.max(lnrStart.getTime(), nightStartTime.getTime())
+                const overlapEnd = Math.min(lnrEnd.getTime(), nightEndTime.getTime())
+                const nightDuration = overlapEnd > overlapStart ? (overlapEnd - overlapStart) / (1000 * 60 * 60) : 0
+                let violated = false
+                if (duration < 12) {
+                  violated = true
+                }
+                if (nightDuration < 9) {
+                  violated = true
+                }
+                const maxStart = new Date(previousDuty.end.getFullYear(), previousDuty.end.getMonth(), previousDuty.end.getDate(), 0, 30)
+                if (lnrStart > maxStart) {
+                  violated = true
+                }
+                if (start < lnrEnd) {
+                  violated = true
+                }
+                const lnrEvent: Event = {
+                  id: Date.now().toString() + 'lnr',
+                  title: 'Local Night Rest',
+                  start: lnrStart,
+                  end: lnrEnd,
+                  type: 'rest',
+                  isLocalNightRest: true,
+                  violated
+                }
+                if (violated) {
+                  alert('Local night rest does not meet regulatory requirements.')
+                }
+                const overlapsDuty = events.some(e => 
+                  e.type === 'duty' && !(lnrEvent.end <= e.start || lnrEvent.start >= e.end)
+                )
+                if (overlapsDuty) {
+                  lnrEvent.violated = true
+                  alert('Local night rest violation.')
+                }
+                setEvents(prev => [...prev, lnrEvent])
+              }
+            }
+          }
+        }
+      }
+      
+      // Add LNR after if needed
+      const nextDuty = events.filter(e => e.type === 'duty' && e.start >= end && e !== editEvent).sort((a,b) => a.start.getTime() - b.start.getTime())[0]
+      if (nextDuty) {
+        const prevEndDayStart = new Date(end.getFullYear(), end.getMonth(), end.getDate())
+        const prevEndDayEnd = new Date(prevEndDayStart.getTime() + 24 * 60 * 60 * 1000)
+        if (end >= prevEndDayStart && end < prevEndDayEnd) {
+          const acclimatizedStartHour = getHourInTZ(editEvent.start, editEvent.acclTZ || acclTZ)
+          const acclimatizedEndHour = getHourInTZ(end, editEvent.acclTZ || acclTZ)
+          const nightStart = regulator === 'EASA' || regulator === 'Australia' ? 0 : regulator === 'FAA' ? 1 : 2
+          const nightEnd = regulator === 'Australia' ? 5 : 6
+          const hasN = (regulator === 'TC' && (acclimatizedStartHour >= 13 || acclimatizedStartHour < 2) && acclimatizedEndHour > 1) ||
+                       (regulator !== 'TC' && acclimatizedStartHour < nightEnd && acclimatizedEndHour > nightStart)
+          if (hasN) {
+            const newStartDayStart = new Date(nextDuty.start.getFullYear(), nextDuty.start.getMonth(), nextDuty.start.getDate())
+            const newStartDayEnd = new Date(newStartDayStart.getTime() + 24 * 60 * 60 * 1000)
+            if (nextDuty.start >= newStartDayStart && nextDuty.start < newStartDayEnd) {
+              const newAcclimatizedStartHour = getHourInTZ(nextDuty.start, nextDuty.acclTZ || acclTZ)
+              const hasE = (regulator === 'TC' && newAcclimatizedStartHour >= 2 && newAcclimatizedStartHour < 7) ||
+                           (regulator !== 'TC' && newAcclimatizedStartHour < 6)
+              if (hasE) {
+                const lnrStart = end
+                let lnrEnd = new Date(lnrStart.getTime() + 12 * 60 * 60 * 1000)
+                const minEnd = new Date(nextDuty.start.getFullYear(), nextDuty.start.getMonth(), nextDuty.start.getDate(), 7, 30)
+                if (lnrEnd < minEnd) lnrEnd = minEnd
+                const duration = (lnrEnd.getTime() - lnrStart.getTime()) / (1000 * 60 * 60)
+                const nightStartTime = new Date(end.getFullYear(), end.getMonth(), end.getDate(), 22, 30)
+                const nightEndTime = new Date(nextDuty.start.getFullYear(), nextDuty.start.getMonth(), nextDuty.start.getDate(), 9, 30)
+                const overlapStart = Math.max(lnrStart.getTime(), nightStartTime.getTime())
+                const overlapEnd = Math.min(lnrEnd.getTime(), nightEndTime.getTime())
+                const nightDuration = overlapEnd > overlapStart ? (overlapEnd - overlapStart) / (1000 * 60 * 60) : 0
+                let violated = false
+                if (duration < 12) {
+                  violated = true
+                }
+                if (nightDuration < 9) {
+                  violated = true
+                }
+                const maxStart = new Date(end.getFullYear(), end.getMonth(), end.getDate(), 0, 30)
+                if (lnrStart > maxStart) {
+                  violated = true
+                }
+                if (nextDuty.start < lnrEnd) {
+                  violated = true
+                }
+                const lnrEvent: Event = {
+                  id: Date.now().toString() + 'lnr',
+                  title: 'Local Night Rest',
+                  start: lnrStart,
+                  end: lnrEnd,
+                  type: 'rest',
+                  isLocalNightRest: true,
+                  violated
+                }
+                if (violated) {
+                  alert('Local night rest does not meet regulatory requirements.')
+                }
+                const overlapsDuty = events.some(e => 
+                  e.type === 'duty' && !(lnrEvent.end <= e.start || lnrEvent.start >= e.end)
+                )
+                if (overlapsDuty) {
+                  lnrEvent.violated = true
+                  alert('Local night rest violation.')
+                }
+                setEvents(prev => [...prev, lnrEvent])
+              }
+            }
+          }
+        }
+      }
       if (restType === '10+travel') {
         const now = new Date()
         const hoursSinceRelease = (now.getTime() - end.getTime()) / (1000 * 60 * 60)
@@ -516,13 +697,25 @@ function Calendar() {
         }
       }
     } else {
+      // Check for overlap with rest periods
+      const overlapsRest = events.some(e => 
+        e.type === 'rest' && !(end <= e.start || start >= e.end)
+      )
+      if (overlapsRest) {
+        if (confirm('Duty period overlaps with a rest period. Click OK to edit the duty, or Cancel to disregard and add anyway.')) {
+          return; // edit
+        }
+        // else disregard, proceed and mark as violated
+      }
+      
       const newEvent: Event = {
         id: Date.now().toString(),
         title: 'Duty Period',
         start,
         end,
         type: 'duty',
-        acclTZ: modalAcclTZ || acclTZ
+        acclTZ: modalAcclTZ || acclTZ,
+        violated: overlapsRest
       }
       const restStart = new Date(end)
       const restEnd = new Date(restStart)
@@ -534,7 +727,79 @@ function Calendar() {
         end: restEnd,
         type: 'rest'
       }
-      setEvents([...events, newEvent, restEvent])
+      // Check for local night rest
+      const newEvents = [newEvent, restEvent]
+      const previousDuty = [...events, newEvent].filter(e => e.type === 'duty' && e.end <= start).sort((a,b) => b.end.getTime() - a.end.getTime())[0]
+      if (previousDuty) {
+        const prevEndDayStart = new Date(previousDuty.end.getFullYear(), previousDuty.end.getMonth(), previousDuty.end.getDate())
+        const prevEndDayEnd = new Date(prevEndDayStart.getTime() + 24 * 60 * 60 * 1000)
+        if (previousDuty.end >= prevEndDayStart && previousDuty.end < prevEndDayEnd) {
+          const acclimatizedStartHour = getHourInTZ(previousDuty.start, previousDuty.acclTZ || acclTZ)
+          const acclimatizedEndHour = getHourInTZ(previousDuty.end, previousDuty.acclTZ || acclTZ)
+          const nightStart = regulator === 'EASA' || regulator === 'Australia' ? 0 : regulator === 'FAA' ? 1 : 2
+          const nightEnd = regulator === 'Australia' ? 5 : 6
+          const hasN = (regulator === 'TC' && (acclimatizedStartHour >= 13 || acclimatizedStartHour < 2) && acclimatizedEndHour > 1) ||
+                       (regulator !== 'TC' && acclimatizedStartHour < nightEnd && acclimatizedEndHour > nightStart)
+          if (hasN) {
+            const newStartDayStart = new Date(start.getFullYear(), start.getMonth(), start.getDate())
+            const newStartDayEnd = new Date(newStartDayStart.getTime() + 24 * 60 * 60 * 1000)
+            if (start >= newStartDayStart && start < newStartDayEnd) {
+              const newAcclimatizedStartHour = getHourInTZ(start, modalAcclTZ || acclTZ)
+              const hasE = (regulator === 'TC' && newAcclimatizedStartHour >= 2 && newAcclimatizedStartHour < 7) ||
+                           (regulator !== 'TC' && newAcclimatizedStartHour < 6)
+              if (hasE) {
+                const lnrStart = previousDuty.end
+                const lnrEnd = start
+                const duration = (lnrEnd.getTime() - lnrStart.getTime()) / (1000 * 60 * 60)
+                const nightStart = new Date(previousDuty.end.getFullYear(), previousDuty.end.getMonth(), previousDuty.end.getDate(), 22, 30)
+                const nightEnd = new Date(start.getFullYear(), start.getMonth(), start.getDate(), 9, 30)
+                const overlapStart = Math.max(lnrStart.getTime(), nightStart.getTime())
+                const overlapEnd = Math.min(lnrEnd.getTime(), nightEnd.getTime())
+                const nightDuration = overlapEnd > overlapStart ? (overlapEnd - overlapStart) / (1000 * 60 * 60) : 0
+                let violated = false
+                if (duration < 12) {
+                  violated = true
+                }
+                if (nightDuration < 9) {
+                  violated = true
+                }
+                // Check start no later than 00:30
+                const maxStart = new Date(previousDuty.end.getFullYear(), previousDuty.end.getMonth(), previousDuty.end.getDate(), 0, 30)
+                if (lnrStart > maxStart) {
+                  violated = true
+                }
+                // Check end no earlier than 07:30
+                const minEnd = new Date(start.getFullYear(), start.getMonth(), start.getDate(), 7, 30)
+                if (lnrEnd < minEnd) {
+                  violated = true
+                }
+                const lnrEvent: Event = {
+                  id: Date.now().toString() + 'lnr',
+                  title: 'Local Night Rest',
+                  start: lnrStart,
+                  end: lnrEnd,
+                  type: 'rest',
+                  isLocalNightRest: true,
+                  violated
+                }
+                if (violated) {
+                  alert('Local night rest does not meet regulatory requirements.')
+                }
+                // Check if LNR overlaps with any duty
+                const overlapsDuty = [...events, newEvent].some(e => 
+                  e.type === 'duty' && !(lnrEvent.end <= e.start || lnrEvent.start >= e.end)
+                )
+                if (overlapsDuty) {
+                  lnrEvent.violated = true
+                  alert('Local night rest violation.')
+                }
+                newEvents.push(lnrEvent)
+              }
+            }
+          }
+        }
+      }
+      setEvents([...events, ...newEvents])
       
       // Handle 10+travel notifications for new duties
       if (restType === '10+travel') {
@@ -632,33 +897,53 @@ function Calendar() {
   }
 
   return (
+    <>
     <div className={`calendar ${darkMode ? 'dark' : 'light'} ${animating ? 'animating' : ''}`}>
-      <div className="calendar-page-container">
-        <h1>{currentDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}</h1>
-        <header className="calendar-header">
-          <h2>Calendar</h2>
-          <div className="header-buttons">
-            <button onClick={() => setShowSettings(true)}>⚙️</button>
-            <button className="theme-toggle" onClick={() => {
-              const newMode = !darkMode;
-              setDarkMode(newMode);
-              localStorage.setItem('theme', newMode ? 'dark' : 'light');
-            }}>
-              {darkMode ? '☀️' : '🌙'}
-            </button>
-          </div>
-        </header>
-        <div className="calendar-container">
-          <button className="nav-prev" onClick={() => {
-            const newDate = new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1)
-            if (newDate >= minMonth) {
-              setAnimating(true)
-              setTimeout(() => setCurrentDate(newDate), 150)
-              setTimeout(() => setAnimating(false), 300)
-            }
+      <header className="calendar-header">
+        <h2>Calendar</h2>
+        <div className="header-buttons">
+          <button onClick={() => setShowSettings(true)}>⚙️</button>
+          <button onClick={() => setShowHamburgerMenu(true)}>☰</button>
+          <button className="theme-toggle" onClick={() => {
+            const newMode = !darkMode;
+            setDarkMode(newMode);
+            localStorage.setItem('theme', newMode ? 'dark' : 'light');
           }}>
-            ‹
+            {darkMode ? '☀️' : '🌙'}
           </button>
+        </div>
+      </header>
+      <div className="calendar-page-container">
+        <div className="month-header">
+          <h1 style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', margin: 0 }}>
+            {currentDate > minMonth && (
+              <button className="nav-prev" style={{ marginRight: '1rem' }} onClick={() => {
+                const newDate = new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1);
+                if (newDate >= minMonth) {
+                  setAnimating(true);
+                  setTimeout(() => setCurrentDate(newDate), 150);
+                  setTimeout(() => setAnimating(false), 300);
+                }
+              }}>
+                &#x00AB;
+              </button>
+            )}
+            <span style={{ minWidth: '10rem', textAlign: 'center', display: 'inline-block' }}>{currentDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}</span>
+            {currentDate < maxMonth && (
+              <button className="nav-next" style={{ marginLeft: '1rem' }} onClick={() => {
+                const newDate = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1);
+                if (newDate <= maxMonth) {
+                  setAnimating(true);
+                  setTimeout(() => setCurrentDate(newDate), 150);
+                  setTimeout(() => setAnimating(false), 300);
+                }
+              }}>
+                &#x00BB;
+              </button>
+            )}
+          </h1>
+        </div>
+        <div className="calendar-container">
           <div className="calendar-grid">
             {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => (
               <div key={day} className="day-header">{day}</div>
@@ -666,6 +951,31 @@ function Calendar() {
             {days.map((date: Date, index: number) => {
               const today = new Date()
               const isToday = date.toDateString() === today.toDateString()
+              const dayStart = new Date(date.getFullYear(), date.getMonth(), date.getDate())
+              const dayEnd = new Date(dayStart)
+              dayEnd.setDate(dayEnd.getDate() + 1)
+              const dayEvents = events.filter(event => event.start < dayEnd && event.end > dayStart)
+              let violationLeft = 0
+              const violatedDuty = dayEvents.find(e => e.violated && e.type === 'duty')
+              let violatedLNR = null
+              if (!violatedDuty) {
+                violatedLNR = dayEvents.find(e => e.violated && e.type === 'rest' && e.isLocalNightRest)
+              }
+              if (violatedDuty) {
+                const overlappingRest = dayEvents.find(e => e.type === 'rest' && !(violatedDuty.end <= e.start || violatedDuty.start >= e.end))
+                if (overlappingRest) {
+                  const overlapStart = new Date(Math.max(violatedDuty.start.getTime(), overlappingRest.start.getTime()))
+                  const overlapHour = (overlapStart.getTime() - dayStart.getTime()) / (1000 * 60 * 60)
+                  violationLeft = (overlapHour / 24) * 100
+                }
+              } else if (violatedLNR) {
+                const overlappingDuty = dayEvents.find(e => e.type === 'duty' && !(violatedLNR.end <= e.start || violatedLNR.start >= e.end))
+                if (overlappingDuty) {
+                  const overlapStart = new Date(Math.max(violatedLNR.start.getTime(), overlappingDuty.start.getTime()))
+                  const overlapHour = (overlapStart.getTime() - dayStart.getTime()) / (1000 * 60 * 60)
+                  violationLeft = (overlapHour / 24) * 100
+                }
+              }
               return (
                 <div
                   key={index}
@@ -678,20 +988,19 @@ function Calendar() {
                 >
                   <span className="day-number">{date.getDate()}</span>
                   {renderEventBars(date)}
+                  {dayEvents.some(e => e.violated) && (
+                    <div 
+                      className="violation-icon" 
+                      style={{ left: `${violationLeft}%`, bottom: '2px' }}
+                      onClick={() => alert('Violation: Duty period overlaps with a rest period.')}
+                    >
+                      ⚠️
+                    </div>
+                  )}
                 </div>
               )
             })}
           </div>
-          <button className="nav-next" onClick={() => {
-            const newDate = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1)
-            if (newDate <= maxMonth) {
-              setAnimating(true)
-              setTimeout(() => setCurrentDate(newDate), 150)
-              setTimeout(() => setAnimating(false), 300)
-            }
-          }}>
-            ›
-          </button>
         </div>
         {selectedDate && (
           <div className="day-details">
@@ -802,6 +1111,43 @@ function Calendar() {
         )}
       </div>
     </div>
+    {showRestDetails && selectedRest && (
+      <div className="modal-overlay" onClick={() => { setShowRestDetails(false); setSelectedRest(null); }}>
+        <div className="modal" onClick={(e) => e.stopPropagation()}>
+          <h3>{selectedRest.title}</h3>
+          <p>Type: {selectedRest.type}</p>
+          <p>Start: {selectedRest.start.toLocaleString()}</p>
+          <p>End: {selectedRest.end.toLocaleString()}</p>
+          <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center', marginTop: '1rem' }}>
+            <button style={{ background: 'red', color: 'white' }} onClick={() => { 
+          if (confirm('Are you sure you want to delete this rest event?')) {
+            setEvents(events.filter(e => e !== selectedRest)); 
+            setShowRestDetails(false); 
+            setSelectedRest(null); 
+          }
+        }}>Delete</button>
+            <button onClick={() => { setShowRestDetails(false); setSelectedRest(null); }}>OK</button>
+          </div>
+        </div>
+      </div>
+    )}
+    {showHamburgerMenu && (
+      <div className="modal-overlay" onClick={() => setShowHamburgerMenu(false)}>
+        <div className="modal" onClick={(e) => e.stopPropagation()}>
+          <h3>Menu</h3>
+          <button onClick={() => {
+            const monthStart = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1)
+            const monthEnd = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1)
+            if (confirm('Are you sure you want to delete all events in the current month?')) {
+              setEvents(events.filter(e => e.start < monthStart || e.start >= monthEnd))
+              setShowHamburgerMenu(false)
+            }
+          }}>Delete all events</button>
+          <button onClick={() => setShowHamburgerMenu(false)}>Close</button>
+        </div>
+      </div>
+    )}
+    </>
   )
 }
 
